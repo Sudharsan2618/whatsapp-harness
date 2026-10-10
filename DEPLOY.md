@@ -64,7 +64,45 @@ printf '%s' 'YOUR_FIRECRAWL_KEY'    | gcloud secrets create FIRECRAWL_API_KEY --
 # add ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY the same way if used
 ```
 
-## Deploy
+## Deploy option A — Continuous deployment from GitHub (recommended)
+
+Cloud Run builds the Dockerfile and redeploys on every push to `main`. No local gcloud needed.
+
+1. **Apply the schema first** — run `npm run migrate` once against the production DB (see above).
+2. Google Cloud Console → **Cloud Run** → **Create service**.
+3. Choose **Continuously deploy from a repository (source or function)** → **Set up with Cloud Build**.
+4. **Repository provider: GitHub** → authorize the Google Cloud Build GitHub App → pick
+   `Sudharsan2618/whatsapp-harness`.
+5. **Branch:** `^main$`. **Build type:** **Dockerfile** (path `/Dockerfile`). Save.
+6. **Region:** `asia-south1`. **Authentication:** Allow unauthenticated invocations.
+7. **Container(s) → Settings → Container port:** `8080`.
+8. **Container(s) → Settings → Resources:** CPU `1`, Memory `1 GiB`.
+9. **Edit → (Container) → CPU allocation:** **CPU is always allocated** (not "only during requests").
+10. **Edit → Autoscaling:** **Minimum instances = 1**, **Maximum instances = 1**.
+11. **Request timeout:** `3600`.
+12. **Variables & Secrets → Environment variables** — add:
+
+    | Name | Value |
+    |------|-------|
+    | `DATABASE_URL` | your Render Postgres URL (or set `DB_HOST`/`DB_NAME`/`DB_USER`/`DB_PASSWORD` instead) |
+    | `DATABASE_SSL` | `true` |
+    | `REDIS_URL` | your Upstash `rediss://…` URL |
+    | `OPENROUTER_API_KEY` | your key |
+    | `FIRECRAWL_API_KEY` | your key |
+    | `WORKER_ID` | `cloudrun-1` |
+    | `LOG_LEVEL` | `info` |
+
+    Add `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY` only if tenants use them.
+    **Do not set `PORT`** — Cloud Run sets it to 8080 automatically.
+
+13. **Create.** Cloud Build builds the image and deploys. Every later `git push` to `main`
+    rebuilds and redeploys automatically.
+
+> Steps 9 and 10 are not optional: the WhatsApp socket is long-lived and in-memory, so the
+> service must be a single always-on instance. Leaving the defaults (min 0, CPU throttled)
+> will drop the connection.
+
+## Deploy option B — one-off from the CLI
 
 Builds the Dockerfile with Cloud Build and deploys, from the repo root:
 
