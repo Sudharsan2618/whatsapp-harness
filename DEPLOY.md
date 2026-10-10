@@ -31,6 +31,19 @@ internet — no Cloud SQL or VPC connector needed.
 - A GCP project with billing enabled.
 - Your Render Postgres and Upstash Redis URLs, and the model/Firecrawl API keys.
 
+## Apply the database schema
+
+The container does **not** migrate on boot. Run migrations once against the target DB
+(with the DB env vars set in `.env`). The script is tracked and idempotent — safe to run
+on a fresh DB or one where the SQL was already applied by hand:
+
+```bash
+npm install
+npm run migrate
+```
+
+Re-run it any time you add new `sql/NNN_*.sql` files; only the new ones apply.
+
 ## One-time setup
 
 ```bash
@@ -75,7 +88,7 @@ Notes:
 - `asia-south1` (Mumbai) is the closest region for India; change if you prefer.
 - `--allow-unauthenticated` exposes the dashboard publicly. The dashboard has **no auth
   yet** — restrict it (Cloud Run IAM, IAP, or add app login) before using real data.
-- The database schema must already exist (run `sql/*.sql` against the DB once). This
+- The database schema must already exist — run `npm run migrate` once (see above). This
   container does not migrate on boot.
 
 ## After deploy
