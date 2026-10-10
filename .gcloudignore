@@ -1,0 +1,10 @@
+# Keep uploads to Cloud Build small and never ship secrets.
+.git/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.firecrawl/
+docs/
+*.log

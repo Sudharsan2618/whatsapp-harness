@@ -1,0 +1,48 @@
+{
+  "name": "wa-agent-harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "server": "tsx src/server/index.ts",
+    "start:prod": "tsx src/server/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "migrate": "tsx scripts/migrate.ts",
+    "link": "tsx scripts/link-number.ts",
+    "live": "tsx scripts/run-live.ts",
+    "smoke": "tsx scripts/model-smoke.ts",
+    "ingest": "tsx scripts/ingest.ts",
+    "chat": "tsx scripts/agent-chat.ts",
+    "handoff": "tsx scripts/handoff.ts",
+    "demo:config": "tsx scripts/config-demo.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.3",
+    "@cacheable/node-cache": "^1.4.0",
+    "@google/generative-ai": "^0.21.0",
+    "@hapi/boom": "^10.0.1",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "bullmq": "^5.12.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "ioredis": "^5.4.1",
+    "openai": "^4.67.3",
+    "pg": "^8.12.0",
+    "pino": "^9.4.0",
+    "qrcode-terminal": "^0.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.6",
+    "tsx": "^4.17.0",
+    "typescript": "^5.5.4"
+  }
+}
