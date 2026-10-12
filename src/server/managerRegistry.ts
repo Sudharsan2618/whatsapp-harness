@@ -55,6 +55,11 @@ export class ManagerRegistry {
     return this.pairing.get(numberId) ?? {}
   }
 
+  /** The live ConnectionManager for a number, if it is running in this process. */
+  manager(numberId: string): ConnectionManager | undefined {
+    return this.managers.get(numberId)?.manager
+  }
+
   /** Log the number out of WhatsApp and drop its manager. */
   async disconnect(numberId: string): Promise<void> {
     const entry = this.managers.get(numberId)

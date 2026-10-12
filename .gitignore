@@ -6,3 +6,7 @@ dist/
 *.log
 .firecrawl/
 auth_info*/
+public/dashboard/_design/
+
+# Design reference export (not source)
+Agent Console — Screens.html

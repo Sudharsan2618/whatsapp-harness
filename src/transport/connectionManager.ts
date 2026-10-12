@@ -83,6 +83,30 @@ export class ConnectionManager {
     await this.sock.sendMessage(jid, content)
   }
 
+  /** Update the WhatsApp display name (syncs to WhatsApp). */
+  async setProfileName(name: string): Promise<void> {
+    if (!this.sock) throw new Error('socket not connected')
+    await this.sock.updateProfileName(name)
+  }
+
+  /** Update the WhatsApp about/status text (syncs to WhatsApp). */
+  async setProfileStatus(status: string): Promise<void> {
+    if (!this.sock) throw new Error('socket not connected')
+    await this.sock.updateProfileStatus(status)
+  }
+
+  /** Read the WhatsApp Business profile card (view-only fields). */
+  async getBusinessProfile(): Promise<unknown> {
+    if (!this.sock) return null
+    const me = this.sock.user?.id
+    if (!me) return null
+    try {
+      return (await this.sock.getBusinessProfile(me)) ?? null
+    } catch {
+      return null
+    }
+  }
+
   private async connect(): Promise<void> {
     const { state, saveCreds } = await useDbAuthState(this.options.pool, this.options.number.id)
     this.saveCreds = saveCreds
