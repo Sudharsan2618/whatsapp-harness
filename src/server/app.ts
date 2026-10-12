@@ -493,12 +493,33 @@ export function createApp(deps: AppDeps): Express {
     }),
   )
 
+  // Link status. With ?wait=1 this is a long-poll: the request is held open (which
+  // keeps the instance's CPU allocated so the WhatsApp socket can finish the
+  // handshake) and returns the moment the socket is linked, a pairing code first
+  // appears, or ~20s elapses. That makes the UI advance in realtime even when the
+  // platform would otherwise throttle the socket between short polls.
   api.get(
     '/numbers/:id/status',
     asyncHandler(async (req, res) => {
-      const number = await tenants.findNumberById(req.params.id!)
+      const id = req.params.id!
+      const number = await tenants.findNumberById(id)
       if (!number) return res.status(404).json({ error: 'number not found' })
-      res.json({ authStatus: number.authStatus, ...registry.getPairing(number.id) })
+
+      if (req.query.wait === '1' && number.authStatus !== 'linked') {
+        const hadCode = req.query.hasCode === '1'
+        const deadline = Date.now() + 20_000
+        while (Date.now() < deadline) {
+          if (registry.manager(id)?.isOpen) break
+          const fresh = await tenants.findNumberById(id)
+          if (fresh?.authStatus === 'linked' || fresh?.authStatus === 'logged_out') break
+          if (!hadCode && registry.getPairing(id).code) break
+          await new Promise((r) => setTimeout(r, 600))
+        }
+      }
+
+      const live = registry.manager(id)?.isOpen
+      const fresh = (await tenants.findNumberById(id)) ?? number
+      res.json({ authStatus: live ? 'linked' : fresh.authStatus, ...registry.getPairing(id) })
     }),
   )
 

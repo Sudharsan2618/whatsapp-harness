@@ -42,6 +42,7 @@ export class ConnectionManager {
   private stopped = false
   private reconnectDelay = 1_000
   private pairingRequested = false
+  private connectionState?: ConnectionState['connection']
 
   private readonly logger: Logger
   private readonly messageStore: MessageStore
@@ -62,6 +63,11 @@ export class ConnectionManager {
 
   get isStopped(): boolean {
     return this.stopped
+  }
+
+  /** Whether the WhatsApp socket is currently connected (the live link signal). */
+  get isOpen(): boolean {
+    return this.connectionState === 'open'
   }
 
   async stop(): Promise<void> {
@@ -145,6 +151,7 @@ export class ConnectionManager {
 
   private async onConnectionUpdate(update: Partial<ConnectionState>): Promise<void> {
     const { connection, lastDisconnect, qr } = update
+    if (connection) this.connectionState = connection
 
     if (qr && this.sock) {
       if (this.options.usePairingCode) {

@@ -1,4 +1,5 @@
 import 'dotenv/config'
+import { hostname } from 'node:os'
 import { z } from 'zod'
 
 const boolish = z
@@ -15,7 +16,10 @@ const schema = z.object({
   DB_PASSWORD: z.string().optional(),
   DATABASE_SSL: boolish,
   REDIS_URL: z.string().url().default('redis://127.0.0.1:6379'),
-  WORKER_ID: z.string().default('worker-local'),
+  // Unique per process by default so the number-ownership lease can distinguish two
+  // processes (e.g. a Cloud Run revision overlap, or a dev server) and never lets
+  // both connect the same WhatsApp account. Set WORKER_ID explicitly to override.
+  WORKER_ID: z.string().default(`worker-${hostname()}-${process.pid}`),
   MAX_SESSIONS_PER_WORKER: z.coerce.number().int().positive().default(20),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])

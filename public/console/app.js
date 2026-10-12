@@ -664,10 +664,36 @@ window._deleteBot = async () => {
 }
 
 // ── WhatsApp screen ──
-let _waData = null, _waEdit = false, _waPoll = null
+// ── Shared pairing long-poll ──
+let _linkActive = false
+function pairCodeHtml(code) {
+  const f = code.length === 8 ? code.slice(0, 4) + '-' + code.slice(4) : code
+  return `<div class="ac-pair"><div class="ac-pair-code">${esc(f)}</div><div class="ac-pair-hint"><span class="ac-spin"></span> On your phone: WhatsApp → Linked devices → Link with phone number, then enter this code. It stays valid for a few minutes.</div></div>`
+}
+function pairWaitHtml() {
+  return `<div class="ac-pair"><div class="ac-pair-hint"><span class="ac-spin"></span> Requesting pairing code…</div></div>`
+}
+// Long-poll /status (held open server-side) so the UI advances the instant the
+// number links, even on platforms that would throttle the socket between polls.
+async function linkPoll(numberId, pairEl, onLinked) {
+  _linkActive = true
+  let hasCode = false
+  const until = Date.now() + 12 * 60 * 1000
+  while (_linkActive && Date.now() < until) {
+    let s = {}
+    try { s = await api.get('/numbers/' + numberId + '/status?wait=1' + (hasCode ? '&hasCode=1' : '')) }
+    catch { await new Promise((r) => setTimeout(r, 1500)); continue }
+    if (!_linkActive) return
+    if (s.authStatus === 'linked') { _linkActive = false; toast('Linked! Your bot is live.'); onLinked(); return }
+    if (s.code) { hasCode = true; if (pairEl && document.body.contains(pairEl)) pairEl.innerHTML = pairCodeHtml(s.code) }
+    else if (pairEl && document.body.contains(pairEl)) pairEl.innerHTML = pairWaitHtml()
+  }
+}
+
+let _waData = null, _waEdit = false
 async function whatsapp() {
+  _linkActive = false
   shell('WhatsApp', loading())
-  if (_waPoll) { clearInterval(_waPoll); _waPoll = null }
   let d; try { d = await api.get('/tenants/' + state.tenant.id + '/whatsapp') } catch (e) { return shell('WhatsApp', pagehead('WhatsApp') + `<div class="ac-content"><div class="ac-note">Could not load: ${esc(e.message)}</div></div>`) }
   _waData = d; _waEdit = false
   renderWhatsapp()
@@ -743,15 +769,8 @@ window._waLink = async () => {
   const pair = document.getElementById('wa_pair')
   try {
     const { numberId } = await api.post('/tenants/' + state.tenant.id + '/link', { phone })
-    let i = 0
-    _waPoll = setInterval(async () => {
-      i++
-      let s = {}; try { s = await api.get('/numbers/' + numberId + '/status') } catch {}
-      if (s.authStatus === 'linked') { clearInterval(_waPoll); _waPoll = null; toast('Linked!'); whatsapp(); return }
-      if (s.code) { const f = s.code.length === 8 ? s.code.slice(0, 4) + '-' + s.code.slice(4) : s.code; pair.innerHTML = `<div class="ac-pair"><div class="ac-pair-code">${esc(f)}</div><div class="ac-pair-hint">On the phone: WhatsApp → Linked devices → Link with phone number, then enter this code.</div></div>` }
-      else pair.innerHTML = `<div class="ac-pair"><div class="ac-pair-hint"><span class="ac-spin"></span> Requesting pairing code…</div></div>`
-      if (i > 180) { clearInterval(_waPoll); _waPoll = null }
-    }, 2500)
+    pair.innerHTML = pairWaitHtml()
+    linkPoll(numberId, pair, () => whatsapp())
   } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Generate pairing code' }
 }
 
@@ -937,7 +956,7 @@ window._sbSend = async (preset) => {
 const SETUP_STEPS = ['Website', 'Review', 'Agent type', 'Connect WhatsApp']
 const _setup = { step: 0, businessName: '', url: '', profile: null, selected: [], archetype: 'company_info', archetypes: [], tenantId: null, numberId: null, poll: null }
 function setupFrame(inner) {
-  if (_setup.poll) { clearInterval(_setup.poll); _setup.poll = null }
+  _linkActive = false
   $('#app').innerHTML = `<div style="min-height:100vh;display:flex;flex-direction:column;background:var(--bg)">
     <header class="ac-appbar"><a class="ac-appbar-brand" href="#/overview" style="text-decoration:none"><span class="ac-appbar-mark">A</span><span>Agent Console</span></a></header>
     <div style="flex:1;display:flex;justify-content:center;padding:32px 16px"><div style="width:100%;max-width:640px;display:flex;flex-direction:column;gap:20px">${inner}</div></div>
@@ -1047,15 +1066,8 @@ window._suLink = async () => {
   const pair = document.getElementById('su_pair')
   try {
     const { numberId } = await api.post('/tenants/' + _setup.tenantId + '/link', { phone })
-    let i = 0
-    _setup.poll = setInterval(async () => {
-      i++; let s = {}; try { s = await api.get('/numbers/' + numberId + '/status') } catch {}
-      if (s.authStatus === 'linked') { clearInterval(_setup.poll); _setup.poll = null; state.tenant = null; toast('Linked! Your bot is live.'); location.hash = '#/overview'; return }
-      if (s.code) { const f = s.code.length === 8 ? s.code.slice(0, 4) + '-' + s.code.slice(4) : s.code; pair.innerHTML = `<div class="ac-pair" style="margin-top:8px"><div class="ac-pair-code">${esc(f)}</div><div class="ac-pair-hint"><span class="ac-spin"></span> Waiting for you to enter this code on your phone…</div></div>
-        <ol style="margin:14px 0 0;padding:0 0 0 20px;display:flex;flex-direction:column;gap:8px"><li>Open <b>WhatsApp</b> on your phone.</li><li>Tap <b>Settings</b> (iPhone) or <b>⋮</b> (Android), then <b>Linked devices</b>.</li><li>Tap <b>Link a device</b>, then <b>Link with phone number instead</b>.</li><li>Type the code above. It stays valid for a few minutes.</li></ol>` }
-      else pair.innerHTML = `<div class="ac-pair" style="margin-top:8px"><div class="ac-pair-hint"><span class="ac-spin"></span> Requesting pairing code…</div></div>`
-      if (i > 180) { clearInterval(_setup.poll); _setup.poll = null }
-    }, 2500)
+    pair.innerHTML = pairWaitHtml()
+    linkPoll(numberId, pair, () => { state.tenant = null; location.hash = '#/overview'; route() })
   } catch (e) { toast(e.message); btn.disabled = false; btn.textContent = 'Generate pairing code' }
 }
 window._suBack = (step) => { _setup.step = step; step === 0 ? setupWebsite() : step === 1 ? setupReview() : setupAgentType() }
@@ -1154,6 +1166,7 @@ window._adminOpen = (id, name) => { state.tenant = { id, business_name: name }; 
 
 // ── Router ──
 async function route() {
+  _linkActive = false
   const hash = location.hash.replace(/^#\//, '') || 'overview'
   const [screen, arg] = hash.split('/')
   if (state.user === undefined) {
