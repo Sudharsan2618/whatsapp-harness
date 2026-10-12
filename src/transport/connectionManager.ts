@@ -27,6 +27,8 @@ export interface ConnectionManagerOptions {
   usePairingCode?: boolean
   onQr?: (qr: string) => void
   onPairingCode?: (code: string) => void
+  onLoggedOut?: () => void
+  onLinked?: () => void
 }
 
 /**
@@ -56,6 +58,10 @@ export class ConnectionManager {
   async start(): Promise<void> {
     this.stopped = false
     await this.connect()
+  }
+
+  get isStopped(): boolean {
+    return this.stopped
   }
 
   async stop(): Promise<void> {
@@ -156,15 +162,17 @@ export class ConnectionManager {
     if (connection === 'open') {
       this.reconnectDelay = 1_000
       await this.setStatus('linked')
+      this.options.onLinked?.()
       this.logger.info('connection open')
     }
 
     if (connection === 'close') {
       const code = (lastDisconnect?.error as Boom | undefined)?.output?.statusCode
       if (code === DisconnectReason.loggedOut) {
-        await this.setStatus('logged_out')
         this.stopped = true
-        this.logger.warn('logged out; manual re-link required')
+        await this.setStatus('logged_out')
+        this.logger.warn('logged out; clearing session')
+        this.options.onLoggedOut?.()
         return
       }
       if (!this.stopped) await this.scheduleReconnect()

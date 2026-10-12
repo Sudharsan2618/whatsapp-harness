@@ -94,3 +94,13 @@ export async function useDbAuthState(
 
   return { state, saveCreds }
 }
+
+/**
+ * Wipe a number's stored credentials and Signal keys. Used after a logout or
+ * before a re-link so pairing starts from a clean, unregistered state instead
+ * of resurrecting a dead session.
+ */
+export async function clearDbAuthState(pool: Pool, numberId: string): Promise<void> {
+  await pool.query('delete from wa_signal_keys where number_id = $1', [numberId])
+  await pool.query('delete from wa_auth_creds where number_id = $1', [numberId])
+}

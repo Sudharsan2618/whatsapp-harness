@@ -1,4 +1,5 @@
 import type { Pool } from 'pg'
+import { env } from '../config/env'
 import { resolveTenantConfig } from '../config/resolver'
 import type { ResolvedTenantConfig } from '../config/schema'
 import type { NumberAuthStatus, Tenant, TenantNumber } from '../domain/types'
@@ -134,12 +135,16 @@ export class TenantRepository {
   }
 
   async addNumber(tenantId: string, phoneE164: string): Promise<TenantNumber> {
+    // Reset to 'linking' and claim ownership for this worker so a re-link always
+    // starts a fresh pairing and no other worker races to connect the same number.
     const { rows } = await this.pool.query<NumberRow>(
-      `insert into tenant_numbers (tenant_id, phone_e164, auth_status)
-       values ($1, $2, 'linking')
-       on conflict (phone_e164) do update set tenant_id = excluded.tenant_id, updated_at = now()
+      `insert into tenant_numbers (tenant_id, phone_e164, auth_status, worker_id, lease_expires_at)
+       values ($1, $2, 'linking', $3, now() + interval '5 minutes')
+       on conflict (phone_e164) do update
+         set tenant_id = excluded.tenant_id, auth_status = 'linking',
+             worker_id = $3, lease_expires_at = now() + interval '5 minutes', updated_at = now()
        returning id, tenant_id, phone_e164, display_name, auth_status`,
-      [tenantId, phoneE164],
+      [tenantId, phoneE164, env.WORKER_ID],
     )
     return toNumber(rows[0]!)
   }
@@ -192,13 +197,19 @@ export class TenantRepository {
     )
   }
 
-  /** Claim up to `max` numbers for this worker, taking a short lease on each. */
+  /**
+   * Claim up to `max` linked numbers for this worker, renewing the lease on each.
+   * Only one worker holds a number at a time, so two processes never open a
+   * socket for the same account (which WhatsApp rejects with conflict/replaced).
+   * 'linking' numbers are owned in-process by whoever is pairing them, so they
+   * are left out here.
+   */
   async claimNumbers(workerId: string, max: number): Promise<TenantNumber[]> {
     const { rows } = await this.pool.query<NumberRow>(
       `with claimed as (
          select id from tenant_numbers
-         where auth_status in ('linked', 'linking')
-           and (worker_id is null or worker_id = $1 or lease_expires_at < now())
+         where auth_status = 'linked'
+           and (worker_id is null or worker_id = $1 or lease_expires_at is null or lease_expires_at < now())
          order by created_at
          limit $2
          for update skip locked
@@ -211,6 +222,14 @@ export class TenantRepository {
       [workerId, max],
     )
     return rows.map(toNumber)
+  }
+
+  /** Release this worker's leases so another process can claim immediately (on shutdown). */
+  async releaseNumbers(workerId: string): Promise<void> {
+    await this.pool.query(
+      'update tenant_numbers set worker_id = null, lease_expires_at = null where worker_id = $1',
+      [workerId],
+    )
   }
 
   async createTenantWithNumber(input: {

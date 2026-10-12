@@ -16,6 +16,7 @@ import { ModelAgent } from '../intelligence/modelAgent'
 import { closeHandoff, isHandoffOpen, openHandoff } from '../orchestration/handoff'
 import { clearSessionCookie, createSession, createUser, destroySession, findUserByEmail, getSessionUser, parseCookies, setSessionCookie, setUserTenant, verifyPassword } from '../control/auth'
 import { enforceLinks, toWhatsAppText } from '../orchestration/waFormat'
+import { clearDbAuthState } from '../transport/authStore'
 import { MessageStore } from '../transport/messageStore'
 import type { ManagerRegistry } from './managerRegistry'
 
@@ -406,6 +407,10 @@ export function createApp(deps: AppDeps): Express {
       const phone = String(req.body.phone ?? '').replace(/\D/g, '')
       if (!phone) return res.status(400).json({ error: 'phone is required (digits only)' })
       const number = await tenants.addNumber(req.params.id!, phone)
+      // Drop any existing socket and wipe stale credentials so pairing starts
+      // clean (a previous logged-out session must not block a fresh link).
+      await registry.stop(number.id)
+      await clearDbAuthState(pool, number.id)
       await registry.ensure(number, true)
       res.json({ numberId: number.id })
     }),
